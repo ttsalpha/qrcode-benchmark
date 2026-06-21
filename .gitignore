@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime / cache
+.cache/
+.npm/
+.node_repl_history
+
+# Build output (nếu sau này có)
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Local
+.local
+*.local.*
