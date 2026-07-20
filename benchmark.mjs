@@ -39,6 +39,9 @@ const { QRCode: TtsQRCode, toSVGString } = await import("@ttsalpha/qrcode");
 const { QRCodeSVG } = await import("qrcode.react");
 const { default: QRCodeStyling } = await import("qr-code-styling");
 const { default: ReactQRCode } = await import("react-qr-code");
+// Headless baseline — the most-downloaded QR lib on npm. No React component;
+// compared through its async toString('svg') against toSVGString.
+const { default: QRCodeLib } = await import("qrcode");
 
 // ─── Pinned ECL ───────────────────────────────────────────────────────────────
 // Defaults differ: @ttsalpha=M, qrcode.react=L, react-qr-code=L, qr-code-styling=Q
@@ -159,6 +162,27 @@ function benchDataTypes(fn) {
   return results;
 }
 
+async function benchDataTypesAsync(fn) {
+  const results = {};
+  for (const [type, value] of Object.entries(DATA)) {
+    for (let i = 0; i < WARMUP; i++) await fn(value + uniqueSuffix(i));
+    gcIfPossible();
+    const times = [];
+    for (let i = 0; i < 500; i++) {
+      const input = value + uniqueSuffix(i);
+      const t0 = performance.now();
+      await fn(input);
+      times.push(performance.now() - t0);
+    }
+    results[type] = {
+      medianMs: fmt(median(times), 3),
+      p95Ms: fmt(p95(times), 3),
+      p99Ms: fmt(p99(times), 3),
+    };
+  }
+  return results;
+}
+
 // ─── TEST 3: Memory stability ─────────────────────────────────────────────────
 function benchMemory(fn, count = 5000) {
   for (let i = 0; i < WARMUP; i++) fn(`https://example.com/m/${i}`);
@@ -167,6 +191,25 @@ function benchMemory(fn, count = 5000) {
   const snapshots = [before];
   for (let i = 0; i < count; i++) {
     fn(`https://example.com/m/${i}`);
+    if (i % 500 === 0) snapshots.push(heapMB());
+  }
+  gcIfPossible();
+  const after = heapMB();
+  return {
+    baselineMB: fmt(before),
+    peakMB: fmt(Math.max(...snapshots)),
+    finalMB: fmt(after),
+    driftMB: fmt(after - before),
+  };
+}
+
+async function benchMemoryAsync(fn, count = 5000) {
+  for (let i = 0; i < WARMUP; i++) await fn(`https://example.com/m/${i}`);
+  gcIfPossible();
+  const before = heapMB();
+  const snapshots = [before];
+  for (let i = 0; i < count; i++) {
+    await fn(`https://example.com/m/${i}`);
     if (i % 500 === 0) snapshots.push(heapMB());
   }
   gcIfPossible();
@@ -286,6 +329,24 @@ function benchSSRUtil(fn, rounds = 10) {
     gcIfPossible();
     const t0 = performance.now();
     for (const payload of SSR_PAYLOADS) fn(payload + uniqueSuffix(uniq++));
+    allTimes.push((performance.now() - t0) / SSR_PAYLOADS.length);
+  }
+  return {
+    medianMs: fmt(median(allTimes), 3),
+    p95Ms: fmt(p95(allTimes), 3),
+    p99Ms: fmt(p99(allTimes), 3),
+  };
+}
+
+async function benchSSRUtilAsync(fn, rounds = 10) {
+  let uniq = 0;
+  for (let i = 0; i < WARMUP; i++)
+    await fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++));
+  const allTimes = [];
+  for (let r = 0; r < rounds; r++) {
+    gcIfPossible();
+    const t0 = performance.now();
+    for (const payload of SSR_PAYLOADS) await fn(payload + uniqueSuffix(uniq++));
     allTimes.push((performance.now() - t0) / SSR_PAYLOADS.length);
   }
   return {
@@ -423,102 +484,119 @@ async function measureRepeatedValueAsync(label, fn, durationMs = 2000) {
 // ─── Feature scoring ──────────────────────────────────────────────────────────
 const FEATURES = {
   svgOutput: {
+    qrcode: true,
     "@ttsalpha/qrcode": true,
     "qrcode.react": true,
     "qr-code-styling": true,
     "react-qr-code": true,
   },
   canvasOutput: {
+    qrcode: true,
     "@ttsalpha/qrcode": false,
     "qrcode.react": true,
     "qr-code-styling": true,
     "react-qr-code": false,
   },
   pngExport: {
+    qrcode: true,
     "@ttsalpha/qrcode": true,
     "qrcode.react": false,
     "qr-code-styling": true,
     "react-qr-code": false,
   },
   toSVGString: {
+    qrcode: true,
     "@ttsalpha/qrcode": true,
     "qrcode.react": false,
     "qr-code-styling": false,
     "react-qr-code": false,
   },
   ssrSafe: {
+    qrcode: true,
     "@ttsalpha/qrcode": true,
     "qrcode.react": true,
     "qr-code-styling": false,
     "react-qr-code": true,
   },
   zeroDeps: {
+    qrcode: false,
     "@ttsalpha/qrcode": true,
     "qrcode.react": true,
     "qr-code-styling": false,
     "react-qr-code": false,
   },
   dotStyles: {
+    qrcode: false,
     "@ttsalpha/qrcode": true,
     "qrcode.react": false,
     "qr-code-styling": true,
     "react-qr-code": false,
   },
   cornerStyles: {
+    qrcode: false,
     "@ttsalpha/qrcode": true,
     "qrcode.react": false,
     "qr-code-styling": true,
     "react-qr-code": false,
   },
   logoImage: {
+    qrcode: false,
     "@ttsalpha/qrcode": true,
     "qrcode.react": true,
     "qr-code-styling": true,
     "react-qr-code": false,
   },
   logoReactNode: {
+    qrcode: false,
     "@ttsalpha/qrcode": true,
     "qrcode.react": false,
     "qr-code-styling": false,
     "react-qr-code": false,
   },
   ecLevel: {
+    qrcode: true,
     "@ttsalpha/qrcode": true,
     "qrcode.react": true,
     "qr-code-styling": true,
     "react-qr-code": true,
   },
   versionControl: {
+    qrcode: true,
     "@ttsalpha/qrcode": true,
     "qrcode.react": true,
     "qr-code-styling": true,
     "react-qr-code": false,
   },
   typescript: {
+    qrcode: false,
     "@ttsalpha/qrcode": true,
     "qrcode.react": true,
     "qr-code-styling": true,
     "react-qr-code": true,
   },
   esm: {
+    qrcode: false,
     "@ttsalpha/qrcode": true,
     "qrcode.react": true,
     "qr-code-styling": false,
     "react-qr-code": true,
   },
   react18plus: {
+    qrcode: true,
     "@ttsalpha/qrcode": true,
     "qrcode.react": true,
     "qr-code-styling": true,
     "react-qr-code": true,
   },
   react16support: {
+    qrcode: true,
     "@ttsalpha/qrcode": false,
     "qrcode.react": true,
     "qr-code-styling": true,
     "react-qr-code": true,
   },
   accessibility: {
+    qrcode: false,
     "@ttsalpha/qrcode": true,
     "qrcode.react": true,
     "qr-code-styling": false,
@@ -527,7 +605,7 @@ const FEATURES = {
 };
 
 function computeScores() {
-  const libs = ["@ttsalpha/qrcode", "qrcode.react", "qr-code-styling", "react-qr-code"];
+  const libs = ["@ttsalpha/qrcode", "qrcode.react", "qr-code-styling", "react-qr-code", "qrcode"];
   const scores = Object.fromEntries(libs.map((l) => [l, 0]));
   for (const feat of Object.values(FEATURES)) {
     for (const lib of libs) {
@@ -570,6 +648,9 @@ const tput = {
     });
     await q.getRawData("svg");
   }),
+  "qrcode (headless)": await measureThroughputAsync("qrcode (headless)", (v) =>
+    QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
+  ),
 };
 
 console.log("\n[2/8] Data complexity — 500 samples per type, unique input, p99 included");
@@ -587,6 +668,9 @@ const complexity = {
   ),
   "react-qr-code": benchDataTypes((v) =>
     renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
+  ),
+  "qrcode (headless)": await benchDataTypesAsync((v) =>
+    QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
   ),
 };
 console.log("  Done.");
@@ -611,6 +695,9 @@ if (!global.gc) {
     "react-qr-code": benchMemory((v) =>
       renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
     ),
+    "qrcode (headless)": await benchMemoryAsync((v) =>
+      QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
+    ),
   };
   for (const [k, v] of Object.entries(memStability)) {
     console.log(
@@ -628,6 +715,7 @@ const styled = {
   "qr-code-styling": await benchStyledStyling(100),
   "qrcode.react (SVG)": null,
   "react-qr-code": null,
+  "qrcode (headless)": null,
 };
 for (const [k, v] of Object.entries(styled)) {
   console.log(`  ${k}: ${v === null ? "— (no styling API)" : v + "ms"}`);
@@ -647,6 +735,9 @@ const ssr = {
   ),
   "qrcode.react (SVG)": benchSSR(QRCodeSVG, (v) => ({ value: v, level: ECL, size: 256 })),
   "react-qr-code": benchSSR(ReactQRCode, (v) => ({ value: v, level: ECL, size: 256 })),
+  "qrcode (headless)": await benchSSRUtilAsync((v) =>
+    QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
+  ),
 };
 for (const [k, v] of Object.entries(ssr))
   console.log(`  ${k}: median=${v.medianMs}ms p95=${v.p95Ms}ms p99=${v.p99Ms}ms`);
@@ -692,6 +783,11 @@ const batch = {
     20,
     10,
   ),
+  "qrcode (headless)": await benchSequentialBatchAsync(
+    (v) => QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
+    100,
+    20,
+  ),
 };
 for (const [k, v] of Object.entries(batch)) {
   console.log(
@@ -708,6 +804,7 @@ const coldStartLibs = [
   ["qrcode.react", "qrcode.react"],
   ["react-qr-code", "react-qr-code"],
   ["qr-code-styling", "qr-code-styling"],
+  ["qrcode (headless)", "qrcode"],
 ];
 const coldStart = {};
 for (const [label, lib] of coldStartLibs) {
@@ -749,6 +846,9 @@ const repeated = {
     });
     await q.getRawData("svg");
   }),
+  "qrcode (headless)": await measureRepeatedValueAsync("qrcode (headless)", (v) =>
+    QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
+  ),
 };
 
 const scores = computeScores();

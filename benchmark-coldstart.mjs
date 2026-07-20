@@ -4,7 +4,7 @@
  * Imports ONE library, renders N times (no warmup), reports timings via IPC.
  *
  * Env vars:
- *   COLD_LIB    — which lib to test (ttsalpha-util | ttsalpha-react | qrcode.react | react-qr-code | qr-code-styling)
+ *   COLD_LIB    — which lib to test (ttsalpha-util | ttsalpha-react | qrcode.react | react-qr-code | qr-code-styling | qrcode)
  *   COLD_ECL    — error correction level (default 'M')
  *   COLD_ROUNDS — number of renders to measure (default 5)
  */
@@ -72,6 +72,11 @@ async function run() {
       renderToString(
         React.createElement(ReactQRCode, { value: `${VALUE}/${i}`, level: ECL, size: 256 }),
       );
+  } else if (LIB === "qrcode") {
+    const { default: QRCodeLib } = await import("qrcode");
+    importMs = performance.now() - t_import_start;
+    renderFn = (i) =>
+      QRCodeLib.toString(`${VALUE}/${i}`, { type: "svg", width: 256, errorCorrectionLevel: ECL });
   } else if (LIB === "qr-code-styling") {
     const { default: QRCodeStyling } = await import("qr-code-styling");
     importMs = performance.now() - t_import_start;

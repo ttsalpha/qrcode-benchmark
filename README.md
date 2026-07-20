@@ -1,6 +1,6 @@
 # qrcode-benchmark
 
-Node.js benchmark comparing `@ttsalpha/qrcode`, `qrcode.react`, `qr-code-styling`, and `react-qr-code`.
+Node.js benchmark comparing `@ttsalpha/qrcode`, `qrcode.react`, `qr-code-styling`, `react-qr-code`, and `qrcode` (headless baseline — no React component, compared via its async `toString('svg')`; React-only tests show `—`).
 
 ## Run
 
