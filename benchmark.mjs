@@ -131,15 +131,23 @@ async function measureThroughputAsync(label, fn, durationMs = 3000) {
 }
 
 // ─── TEST 2: Data complexity ──────────────────────────────────────────────────
+// Unique input per sample: a fixed-length digit suffix keeps the encoding mode
+// (digits are valid in numeric/alphanumeric/byte) and the QR version stable
+// while defeating value-level caches (@ttsalpha/qrcode ≥2.4 has a 16-entry LRU).
+function uniqueSuffix(i) {
+  return String(i % 100).padStart(2, "0");
+}
+
 function benchDataTypes(fn) {
   const results = {};
   for (const [type, value] of Object.entries(DATA)) {
-    for (let i = 0; i < WARMUP; i++) fn(value);
+    for (let i = 0; i < WARMUP; i++) fn(value + uniqueSuffix(i));
     gcIfPossible();
     const times = [];
     for (let i = 0; i < 500; i++) {
+      const input = value + uniqueSuffix(i);
       const t0 = performance.now();
-      fn(value);
+      fn(input);
       times.push(performance.now() - t0);
     }
     results[type] = {
@@ -197,41 +205,61 @@ const STYLED_OPTS_STYLING = {
   cornersDotOptions: { type: "dot", color: "#0f3460" },
 };
 
+// Unique value per render — same cache-busting rule as TEST 2, applied to
+// every lib for symmetry.
 function benchStyledTts(count = 500) {
-  for (let i = 0; i < WARMUP; i++) renderToString(React.createElement(TtsQRCode, STYLED_PROPS_TTS));
+  const props = (i) => ({
+    ...STYLED_PROPS_TTS,
+    value: STYLED_PROPS_TTS.value + "/" + uniqueSuffix(i),
+  });
+  for (let i = 0; i < WARMUP; i++) renderToString(React.createElement(TtsQRCode, props(i)));
   gcIfPossible();
   const t0 = performance.now();
-  for (let i = 0; i < count; i++) renderToString(React.createElement(TtsQRCode, STYLED_PROPS_TTS));
+  for (let i = 0; i < count; i++) renderToString(React.createElement(TtsQRCode, props(i)));
   return fmt((performance.now() - t0) / count, 3);
 }
 
 function benchStyledTtsUtil(count = 500) {
-  for (let i = 0; i < WARMUP; i++) toSVGString(STYLED_PROPS_TTS);
+  const props = (i) => ({
+    ...STYLED_PROPS_TTS,
+    value: STYLED_PROPS_TTS.value + "/" + uniqueSuffix(i),
+  });
+  for (let i = 0; i < WARMUP; i++) toSVGString(props(i));
   gcIfPossible();
   const t0 = performance.now();
-  for (let i = 0; i < count; i++) toSVGString(STYLED_PROPS_TTS);
+  for (let i = 0; i < count; i++) toSVGString(props(i));
   return fmt((performance.now() - t0) / count, 3);
 }
 
 async function benchStyledStyling(count = 100) {
+  const opts = (i) => ({
+    ...STYLED_OPTS_STYLING,
+    data: STYLED_OPTS_STYLING.data + "/" + uniqueSuffix(i),
+  });
   for (let i = 0; i < 5; i++) {
-    const q = new QRCodeStyling(STYLED_OPTS_STYLING);
+    const q = new QRCodeStyling(opts(i));
     await q.getRawData("svg");
   }
   gcIfPossible();
   const t0 = performance.now();
   for (let i = 0; i < count; i++) {
-    const q = new QRCodeStyling(STYLED_OPTS_STYLING);
+    const q = new QRCodeStyling(opts(i));
     await q.getRawData("svg");
   }
   return fmt((performance.now() - t0) / count, 3);
 }
 
 // ─── TEST 5: SSR simulation ───────────────────────────────────────────────────
+// Every render gets a unique payload variant (12 base payloads × per-render
+// digit suffix) so the 16-entry LRU in @ttsalpha/qrcode ≥2.4 never hits.
 function benchSSR(Component, makeProps, rounds = 10) {
+  let uniq = 0;
   for (let i = 0; i < WARMUP; i++) {
     renderToString(
-      React.createElement(Component, makeProps(SSR_PAYLOADS[i % SSR_PAYLOADS.length])),
+      React.createElement(
+        Component,
+        makeProps(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++)),
+      ),
     );
   }
   const allTimes = [];
@@ -239,7 +267,7 @@ function benchSSR(Component, makeProps, rounds = 10) {
     gcIfPossible();
     const t0 = performance.now();
     for (const payload of SSR_PAYLOADS) {
-      renderToString(React.createElement(Component, makeProps(payload)));
+      renderToString(React.createElement(Component, makeProps(payload + uniqueSuffix(uniq++))));
     }
     allTimes.push((performance.now() - t0) / SSR_PAYLOADS.length);
   }
@@ -251,12 +279,13 @@ function benchSSR(Component, makeProps, rounds = 10) {
 }
 
 function benchSSRUtil(fn, rounds = 10) {
-  for (let i = 0; i < WARMUP; i++) fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length]);
+  let uniq = 0;
+  for (let i = 0; i < WARMUP; i++) fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++));
   const allTimes = [];
   for (let r = 0; r < rounds; r++) {
     gcIfPossible();
     const t0 = performance.now();
-    for (const payload of SSR_PAYLOADS) fn(payload);
+    for (const payload of SSR_PAYLOADS) fn(payload + uniqueSuffix(uniq++));
     allTimes.push((performance.now() - t0) / SSR_PAYLOADS.length);
   }
   return {
@@ -272,7 +301,8 @@ function benchSSRUtil(fn, rounds = 10) {
 // page requests — the bottleneck is render time, not I/O.
 // NOTE: True parallelism requires worker_threads (separate test).
 async function benchSequentialBatch(fn, batchSize = 100, rounds = 20) {
-  for (let i = 0; i < WARMUP; i++) fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length]);
+  let uniq = 0;
+  for (let i = 0; i < WARMUP; i++) fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++));
   gcIfPossible();
 
   const batchTimes = [];
@@ -280,7 +310,7 @@ async function benchSequentialBatch(fn, batchSize = 100, rounds = 20) {
     gcIfPossible();
     const t0 = performance.now();
     for (let i = 0; i < batchSize; i++) {
-      fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length]);
+      fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++));
     }
     batchTimes.push(performance.now() - t0);
   }
@@ -293,14 +323,16 @@ async function benchSequentialBatch(fn, batchSize = 100, rounds = 20) {
 }
 
 async function benchSequentialBatchAsync(fn, batchSize = 20, rounds = 10) {
-  for (let i = 0; i < 5; i++) await fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length]);
+  let uniq = 0;
+  for (let i = 0; i < 5; i++)
+    await fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++));
   gcIfPossible();
   const batchTimes = [];
   for (let r = 0; r < rounds; r++) {
     gcIfPossible();
     const t0 = performance.now();
     for (let i = 0; i < batchSize; i++) {
-      await fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length]);
+      await fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++));
     }
     batchTimes.push(performance.now() - t0);
   }
@@ -351,6 +383,41 @@ async function benchTrueColdStart(lib, rounds = 10) {
     firstRenderP95Ms: fmt(p95(firstRenderList), 3),
     secondRenderMedianMs: secondRenderList.length ? fmt(median(secondRenderList), 3) : null,
   };
+}
+
+// ─── TEST 8: Repeated value — same input every render ────────────────────────
+// Production scenario: the same QR re-rendered across requests/mounts (POS
+// receipts, kiosk screens). @ttsalpha/qrcode ≥2.4 memoizes matrices in a
+// 16-entry LRU, so this is expected to favor it heavily — the point of this
+// test is to quantify that, clearly labeled. All libs run the same pattern.
+function measureRepeatedValue(label, fn, durationMs = 2000) {
+  const value = "https://example.com/repeated-value-test";
+  for (let i = 0; i < WARMUP; i++) fn(value);
+  gcIfPossible();
+  let count = 0;
+  const end = performance.now() + durationMs;
+  while (performance.now() < end) {
+    fn(value);
+    count++;
+  }
+  const rps = fmt(count / (durationMs / 1000), 0);
+  console.log(`  ${label}: ${rps.toLocaleString()} renders/sec`);
+  return rps;
+}
+
+async function measureRepeatedValueAsync(label, fn, durationMs = 2000) {
+  const value = "https://example.com/repeated-value-test";
+  for (let i = 0; i < 5; i++) await fn(value);
+  gcIfPossible();
+  let count = 0;
+  const end = performance.now() + durationMs;
+  while (performance.now() < end) {
+    await fn(value);
+    count++;
+  }
+  const rps = fmt(count / (durationMs / 1000), 0);
+  console.log(`  ${label}: ${rps.toLocaleString()} renders/sec`);
+  return rps;
 }
 
 // ─── Feature scoring ──────────────────────────────────────────────────────────
@@ -476,7 +543,7 @@ console.log("Node:", process.version, "| Date:", new Date().toISOString());
 console.log(`ECL pinned to "${ECL}" (styled QR uses "H" — logo-safe)`);
 console.log("─".repeat(60));
 
-console.log("\n[1/7] Throughput — unique input per render (3s each)");
+console.log("\n[1/8] Throughput — unique input per render (3s each)");
 console.log("  Note: unique value per call; no lib can benefit from caching");
 const tput = {
   "@ttsalpha/qrcode (React)": measureThroughput("@ttsalpha (React)", (v) =>
@@ -505,7 +572,7 @@ const tput = {
   }),
 };
 
-console.log("\n[2/7] Data complexity — 500 samples per type, p99 included");
+console.log("\n[2/8] Data complexity — 500 samples per type, unique input, p99 included");
 const complexity = {
   "@ttsalpha/qrcode (React)": benchDataTypes((v) =>
     renderToString(
@@ -524,7 +591,7 @@ const complexity = {
 };
 console.log("  Done.");
 
-console.log("\n[3/7] Memory stability — 5000 renders, unique input");
+console.log("\n[3/8] Memory stability — 5000 renders, unique input");
 let memStability = null;
 if (!global.gc) {
   console.log("  Skipped — requires --expose-gc (not available in this environment)");
@@ -552,7 +619,9 @@ if (!global.gc) {
   }
 }
 
-console.log("\n[4/7] Styled QR — ECL=H + size=512 (production: logo occludes center)");
+console.log(
+  "\n[4/8] Styled QR — ECL=H + size=512, unique input (production: logo occludes center)",
+);
 const styled = {
   "@ttsalpha/qrcode (React)": benchStyledTts(),
   "@ttsalpha/qrcode (toSVGStr)": benchStyledTtsUtil(),
@@ -564,7 +633,9 @@ for (const [k, v] of Object.entries(styled)) {
   console.log(`  ${k}: ${v === null ? "— (no styling API)" : v + "ms"}`);
 }
 
-console.log("\n[5/7] SSR simulation — 12 varied payloads, 10 rounds, p99 included");
+console.log(
+  "\n[5/8] SSR simulation — 12 varied payloads, unique per render, 10 rounds, p99 included",
+);
 const ssr = {
   "@ttsalpha/qrcode (React)": benchSSR(TtsQRCode, (v) => ({
     value: v,
@@ -580,7 +651,7 @@ const ssr = {
 for (const [k, v] of Object.entries(ssr))
   console.log(`  ${k}: median=${v.medianMs}ms p95=${v.p95Ms}ms p99=${v.p99Ms}ms`);
 
-console.log("\n[6/7] Sequential batch — burst of N renders (single thread, production SSR)");
+console.log("\n[6/8] Sequential batch — burst of N renders (single thread, production SSR)");
 console.log('  Note: Node.js is single-threaded; "concurrent" React renders are sequential.');
 console.log("  True parallelism requires worker_threads (not included here).");
 const batch = {
@@ -628,7 +699,7 @@ for (const [k, v] of Object.entries(batch)) {
   );
 }
 
-console.log("\n[7/7] True cold start — fresh process per round (10 rounds each)");
+console.log("\n[7/8] True cold start — fresh process per round (10 rounds each)");
 console.log("  Each round: new Node process → import lib → render (no prior JIT warmup).");
 console.log("  Represents: Lambda cold start, edge function first invocation.");
 const coldStartLibs = [
@@ -650,6 +721,36 @@ for (const [label, lib] of coldStartLibs) {
   );
 }
 
+console.log("\n[8/8] Repeated value — same input every render (2s each)");
+console.log("  Note: measures value-level caching (@ttsalpha ≥2.4 has a 16-entry LRU).");
+console.log("  Expected to favor @ttsalpha by design — kept separate from cold-path tests.");
+const repeated = {
+  "@ttsalpha/qrcode (React)": measureRepeatedValue("@ttsalpha (React)", (v) =>
+    renderToString(
+      React.createElement(TtsQRCode, { value: v, errorCorrectionLevel: ECL, size: 256 }),
+    ),
+  ),
+  "@ttsalpha/qrcode (toSVGStr)": measureRepeatedValue("@ttsalpha (util)", (v) =>
+    toSVGString({ value: v, errorCorrectionLevel: ECL, size: 256 }),
+  ),
+  "qrcode.react (SVG)": measureRepeatedValue("qrcode.react", (v) =>
+    renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
+  ),
+  "react-qr-code": measureRepeatedValue("react-qr-code", (v) =>
+    renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
+  ),
+  "qr-code-styling": await measureRepeatedValueAsync("qr-code-styling", async (v) => {
+    const q = new QRCodeStyling({
+      data: v,
+      type: "svg",
+      width: 256,
+      height: 256,
+      qrOptions: { errorCorrectionLevel: ECL },
+    });
+    await q.getRawData("svg");
+  }),
+};
+
 const scores = computeScores();
 
 const output = {
@@ -664,6 +765,7 @@ const output = {
   ssrSimulation: ssr,
   sequentialBatch: batch,
   trueColdStart: coldStart,
+  repeatedValue: repeated,
   featureScores: scores,
   features: FEATURES,
 };

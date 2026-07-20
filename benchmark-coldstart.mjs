@@ -12,6 +12,8 @@
 const LIB = process.env.COLD_LIB;
 const ECL = process.env.COLD_ECL || "M";
 const ROUNDS = parseInt(process.env.COLD_ROUNDS || "5", 10);
+// A per-render suffix is appended so render #2+ measures the JIT-warmed
+// pipeline, not a value-level cache hit (@ttsalpha/qrcode ≥2.4 has an LRU).
 const VALUE = "https://example.com/cold-start-test";
 
 async function run() {
@@ -38,36 +40,44 @@ async function run() {
   if (LIB === "ttsalpha-util") {
     const { toSVGString } = await import("@ttsalpha/qrcode");
     importMs = performance.now() - t_import_start;
-    renderFn = () => toSVGString({ value: VALUE, errorCorrectionLevel: ECL, size: 256 });
+    renderFn = (i) => toSVGString({ value: `${VALUE}/${i}`, errorCorrectionLevel: ECL, size: 256 });
   } else if (LIB === "ttsalpha-react") {
     const { renderToString } = await import("react-dom/server");
     const React = (await import("react")).default;
     const { QRCode } = await import("@ttsalpha/qrcode");
     importMs = performance.now() - t_import_start;
-    renderFn = () =>
+    renderFn = (i) =>
       renderToString(
-        React.createElement(QRCode, { value: VALUE, errorCorrectionLevel: ECL, size: 256 }),
+        React.createElement(QRCode, {
+          value: `${VALUE}/${i}`,
+          errorCorrectionLevel: ECL,
+          size: 256,
+        }),
       );
   } else if (LIB === "qrcode.react") {
     const { renderToString } = await import("react-dom/server");
     const React = (await import("react")).default;
     const { QRCodeSVG } = await import("qrcode.react");
     importMs = performance.now() - t_import_start;
-    renderFn = () =>
-      renderToString(React.createElement(QRCodeSVG, { value: VALUE, level: ECL, size: 256 }));
+    renderFn = (i) =>
+      renderToString(
+        React.createElement(QRCodeSVG, { value: `${VALUE}/${i}`, level: ECL, size: 256 }),
+      );
   } else if (LIB === "react-qr-code") {
     const { renderToString } = await import("react-dom/server");
     const React = (await import("react")).default;
     const { default: ReactQRCode } = await import("react-qr-code");
     importMs = performance.now() - t_import_start;
-    renderFn = () =>
-      renderToString(React.createElement(ReactQRCode, { value: VALUE, level: ECL, size: 256 }));
+    renderFn = (i) =>
+      renderToString(
+        React.createElement(ReactQRCode, { value: `${VALUE}/${i}`, level: ECL, size: 256 }),
+      );
   } else if (LIB === "qr-code-styling") {
     const { default: QRCodeStyling } = await import("qr-code-styling");
     importMs = performance.now() - t_import_start;
-    renderFn = async () => {
+    renderFn = async (i) => {
       const q = new QRCodeStyling({
-        data: VALUE,
+        data: `${VALUE}/${i}`,
         type: "svg",
         width: 256,
         height: 256,
@@ -84,7 +94,7 @@ async function run() {
   const renders = [];
   for (let i = 0; i < ROUNDS; i++) {
     const t = performance.now();
-    await renderFn();
+    await renderFn(i);
     renders.push(Number((performance.now() - t).toFixed(3)));
   }
 

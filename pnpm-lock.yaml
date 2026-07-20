@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@ttsalpha/qrcode':
-        specifier: 2.3.1
-        version: 2.3.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: 2.4.0
+        version: 2.4.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       jsdom:
         specifier: 29.1.1
         version: 29.1.1
@@ -96,8 +96,8 @@ packages:
       '@noble/hashes':
         optional: true
 
-  '@ttsalpha/qrcode@2.3.1':
-    resolution: {integrity: sha512-Ib+Nco4HmLvC5JeFl2XOusUxNgbvhCVMij61VGLy/B4bNWh51CATfbCydcUzw5g4+myIoswM5U5aGYoyRyICWg==}
+  '@ttsalpha/qrcode@2.4.0':
+    resolution: {integrity: sha512-GzNreTt1Xu0BQysjItYVeYzl1KadF3BHCS8n3iIWbln7S01qFNXp63BjP7C0rfh1JxM4sKIkv+eQQx21pO8WXQ==}
     peerDependencies:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
@@ -308,7 +308,7 @@ snapshots:
 
   '@exodus/bytes@1.15.1': {}
 
-  '@ttsalpha/qrcode@2.3.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@ttsalpha/qrcode@2.4.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
