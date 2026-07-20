@@ -10,7 +10,7 @@ pnpm run bench
 node --expose-gc benchmark.mjs
 ```
 
-`--expose-gc` is required — the process exits immediately without it.
+Without `--expose-gc` the memory stability test is skipped (everything else still runs).
 
 ## Tests
 
@@ -43,6 +43,6 @@ benchmark-coldstart.mjs  # fork worker for cold start test
 
 ## Results
 
-Latest: `results.txt` — Node.js v24.15.0, June 2026.
+Latest results: [GitHub Actions](https://github.com/ttsalpha/qrcode-benchmark/actions) — each run uploads a `result-<os>-node<version>.txt` artifact.
 
 Published at: https://qrcode.ttsalpha.com/benchmark
