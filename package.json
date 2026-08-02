@@ -4,10 +4,11 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "bench": "node --expose-gc benchmark.mjs"
+    "bench": "node --expose-gc benchmark.mjs",
+    "bench:median": "node bench-median.mjs"
   },
   "dependencies": {
-    "@ttsalpha/qrcode": "2.4.1",
+    "@ttsalpha/qrcode": "2.4.3",
     "jsdom": "29.1.1",
     "qr-code-styling": "1.9.2",
     "qrcode": "1.5.4",

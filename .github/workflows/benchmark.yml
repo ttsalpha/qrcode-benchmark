@@ -31,8 +31,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run benchmark
-        run: node --expose-gc benchmark.mjs | tee result-${{ matrix.os }}-node${{ matrix.node }}.txt
+      - name: Run benchmark (3× median)
+        run: |
+          node bench-median.mjs 3 median.json
+          {
+            echo "QR Code Benchmark — median of 3 runs"
+            echo "os=${{ matrix.os }} node=${{ matrix.node }}"
+            echo ""
+            echo "RESULTS JSON:"
+            cat median.json
+          } > result-${{ matrix.os }}-node${{ matrix.node }}.txt
 
       - name: Upload result
         uses: actions/upload-artifact@v4
