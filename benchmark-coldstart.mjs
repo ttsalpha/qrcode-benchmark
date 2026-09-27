@@ -40,7 +40,7 @@ async function run() {
   if (LIB === "ttsalpha-util") {
     const { toSVGString } = await import("@ttsalpha/qrcode");
     importMs = performance.now() - t_import_start;
-    renderFn = (i) => toSVGString({ value: `${VALUE}/${i}`, errorCorrectionLevel: ECL, size: 256 });
+    renderFn = (i) => toSVGString({ value: `${VALUE}/${i}`, qr: { errorCorrectionLevel: ECL }, size: 256 });
   } else if (LIB === "ttsalpha-react") {
     const { renderToString } = await import("react-dom/server");
     const React = (await import("react")).default;
@@ -50,7 +50,7 @@ async function run() {
       renderToString(
         React.createElement(QRCode, {
           value: `${VALUE}/${i}`,
-          errorCorrectionLevel: ECL,
+          qr: { errorCorrectionLevel: ECL },
           size: 256,
         }),
       );

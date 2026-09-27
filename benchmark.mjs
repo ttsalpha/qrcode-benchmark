@@ -227,7 +227,7 @@ async function benchMemoryAsync(fn, count = 5000) {
 // This is the most realistic styled QR scenario.
 const STYLED_PROPS_TTS = {
   value: "https://example.com",
-  errorCorrectionLevel: "H", // H required with logo
+  qr: { errorCorrectionLevel: "H" }, // H required with logo
   size: 512,
   dotStyle: "rounded",
   dotColor: "#1a1a2e",
@@ -626,11 +626,11 @@ console.log("  Note: unique value per call; no lib can benefit from caching");
 const tput = {
   "@ttsalpha/qrcode (React)": measureThroughput("@ttsalpha (React)", (v) =>
     renderToString(
-      React.createElement(TtsQRCode, { value: v, errorCorrectionLevel: ECL, size: 256 }),
+      React.createElement(TtsQRCode, { value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
     ),
   ),
   "@ttsalpha/qrcode (toSVGStr)": measureThroughput("@ttsalpha (util)", (v) =>
-    toSVGString({ value: v, errorCorrectionLevel: ECL, size: 256 }),
+    toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
   ),
   "qrcode.react (SVG)": measureThroughput("qrcode.react", (v) =>
     renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
@@ -657,11 +657,11 @@ console.log("\n[2/8] Data complexity — 500 samples per type, unique input, p99
 const complexity = {
   "@ttsalpha/qrcode (React)": benchDataTypes((v) =>
     renderToString(
-      React.createElement(TtsQRCode, { value: v, errorCorrectionLevel: ECL, size: 256 }),
+      React.createElement(TtsQRCode, { value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
     ),
   ),
   "@ttsalpha/qrcode (toSVGStr)": benchDataTypes((v) =>
-    toSVGString({ value: v, errorCorrectionLevel: ECL, size: 256 }),
+    toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
   ),
   "qrcode.react (SVG)": benchDataTypes((v) =>
     renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
@@ -683,11 +683,11 @@ if (!global.gc) {
   memStability = {
     "@ttsalpha/qrcode (React)": benchMemory((v) =>
       renderToString(
-        React.createElement(TtsQRCode, { value: v, errorCorrectionLevel: ECL, size: 256 }),
+        React.createElement(TtsQRCode, { value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
       ),
     ),
     "@ttsalpha/qrcode (toSVGStr)": benchMemory((v) =>
-      toSVGString({ value: v, errorCorrectionLevel: ECL, size: 256 }),
+      toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
     ),
     "qrcode.react (SVG)": benchMemory((v) =>
       renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
@@ -727,11 +727,11 @@ console.log(
 const ssr = {
   "@ttsalpha/qrcode (React)": benchSSR(TtsQRCode, (v) => ({
     value: v,
-    errorCorrectionLevel: ECL,
+    qr: { errorCorrectionLevel: ECL },
     size: 256,
   })),
   "@ttsalpha/qrcode (toSVGStr)": benchSSRUtil((v) =>
-    toSVGString({ value: v, errorCorrectionLevel: ECL, size: 256 }),
+    toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
   ),
   "qrcode.react (SVG)": benchSSR(QRCodeSVG, (v) => ({ value: v, level: ECL, size: 256 })),
   "react-qr-code": benchSSR(ReactQRCode, (v) => ({ value: v, level: ECL, size: 256 })),
@@ -749,13 +749,13 @@ const batch = {
   "@ttsalpha/qrcode (React)": await benchSequentialBatch(
     (v) =>
       renderToString(
-        React.createElement(TtsQRCode, { value: v, errorCorrectionLevel: ECL, size: 256 }),
+        React.createElement(TtsQRCode, { value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
       ),
     100,
     20,
   ),
   "@ttsalpha/qrcode (toSVGStr)": await benchSequentialBatch(
-    (v) => toSVGString({ value: v, errorCorrectionLevel: ECL, size: 256 }),
+    (v) => toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
     100,
     20,
   ),
@@ -824,11 +824,11 @@ console.log("  Expected to favor @ttsalpha by design — kept separate from cold
 const repeated = {
   "@ttsalpha/qrcode (React)": measureRepeatedValue("@ttsalpha (React)", (v) =>
     renderToString(
-      React.createElement(TtsQRCode, { value: v, errorCorrectionLevel: ECL, size: 256 }),
+      React.createElement(TtsQRCode, { value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
     ),
   ),
   "@ttsalpha/qrcode (toSVGStr)": measureRepeatedValue("@ttsalpha (util)", (v) =>
-    toSVGString({ value: v, errorCorrectionLevel: ECL, size: 256 }),
+    toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
   ),
   "qrcode.react (SVG)": measureRepeatedValue("qrcode.react", (v) =>
     renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
