@@ -8,7 +8,7 @@
     "bench:median": "node bench-median.mjs"
   },
   "dependencies": {
-    "@ttsalpha/qrcode": "2.4.3",
+    "@ttsalpha/qrcode": "3.0.0",
     "jsdom": "29.1.1",
     "qr-code-styling": "1.9.2",
     "qrcode": "1.5.4",
