@@ -27,7 +27,7 @@ Without `--expose-gc` the memory stability test is skipped (everything else stil
 
 ## Design decisions
 
-- **ECL pinned to M** for all tests (styled QR uses H — logo-safe). Prevents libs with auto ECL-upgrading from appearing slower than they are.
+- **ECL pinned to M** for all tests. Prevents libs with auto ECL-upgrading from appearing slower than they are. Test 4 uses H, the level a styled QR needs once a logo occludes the center, though no logo is drawn: `qr-code-styling` loads one through an `Image`, which never resolves under JSDOM.
 - **Unique input per render** in every cold-path test (1–7) — no lib can benefit from internal caching. `@ttsalpha/qrcode` ≥2.4 memoizes matrices in a 16-entry LRU, so any test that repeats a value (or cycles fewer than 16 distinct values) would measure its cache instead of its pipeline. Suffixes are fixed-length digits so the encoding mode and QR version stay stable.
 - **Repeated value measured separately** (test 8, clearly labeled) — re-rendering the same QR across requests is a real production scenario, and the cache is expected to dominate there by design.
 - **`child_process.fork` for cold start** — each round is a fresh Node process with zero JIT warmup. Renders within a round also use unique values so render #2+ measures the JIT-warmed pipeline, not a cache hit.

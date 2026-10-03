@@ -223,11 +223,12 @@ async function benchMemoryAsync(fn, count = 5000) {
 }
 
 // ─── TEST 4: Styled QR ────────────────────────────────────────────────────────
-// ECL=H required in production when a logo occludes the center (30%+ coverage).
-// This is the most realistic styled QR scenario.
+// Custom dot and corner shapes at ECL=H, the level a styled QR has to use once a
+// logo occludes the center. No logo is drawn: qr-code-styling loads one through an
+// Image, which never resolves under JSDOM, so a logo would stall the comparison.
 const STYLED_PROPS_TTS = {
   value: "https://example.com",
-  qr: { errorCorrectionLevel: "H" }, // H required with logo
+  qr: { errorCorrectionLevel: "H" },
   size: 512,
   dotStyle: "rounded",
   dotColor: "#1a1a2e",
@@ -242,7 +243,7 @@ const STYLED_OPTS_STYLING = {
   type: "svg",
   width: 512,
   height: 512,
-  qrOptions: { errorCorrectionLevel: "H" }, // H required with logo
+  qrOptions: { errorCorrectionLevel: "H" },
   dotsOptions: { type: "rounded", color: "#1a1a2e" },
   cornersSquareOptions: { type: "extra-rounded", color: "#16213e" },
   cornersDotOptions: { type: "dot", color: "#0f3460" },
@@ -618,7 +619,7 @@ function computeScores() {
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 console.log("🔬 QR Code Library Benchmark\n");
 console.log("Node:", process.version, "| Date:", new Date().toISOString());
-console.log(`ECL pinned to "${ECL}" (styled QR uses "H" — logo-safe)`);
+console.log(`ECL pinned to "${ECL}" (styled QR uses "H")`);
 console.log("─".repeat(60));
 
 console.log("\n[1/8] Throughput — unique input per render (3s each)");
@@ -706,9 +707,7 @@ if (!global.gc) {
   }
 }
 
-console.log(
-  "\n[4/8] Styled QR — ECL=H + size=512, unique input (production: logo occludes center)",
-);
+console.log("\n[4/8] Styled QR — ECL=H + size=512, unique input (shapes only, no logo)");
 const styled = {
   "@ttsalpha/qrcode (React)": benchStyledTts(),
   "@ttsalpha/qrcode (toSVGStr)": benchStyledTtsUtil(),
@@ -857,7 +856,7 @@ const output = {
   generatedAt: new Date().toISOString(),
   nodeVersion: process.version,
   eclLevel: ECL,
-  note: "Styled QR uses ECL=H (logo-safe). Throughput uses unique input per render. Cold start uses child_process.fork.",
+  note: "Styled QR uses ECL=H with shapes only, no logo. Throughput uses unique input per render. Cold start uses child_process.fork.",
   throughput: tput,
   dataComplexity: complexity,
   memoryStability: memStability,
