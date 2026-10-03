@@ -11,19 +11,19 @@ jobs:
   benchmark:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-24.04, macos-26]
         node: ["22", "24"]
     runs-on: ${{ matrix.os }}
     name: bench / ${{ matrix.os }} / node-${{ matrix.node }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
@@ -43,7 +43,7 @@ jobs:
           } > result-${{ matrix.os }}-node${{ matrix.node }}.txt
 
       - name: Upload result
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: result-${{ matrix.os }}-node${{ matrix.node }}
           path: result-${{ matrix.os }}-node${{ matrix.node }}.txt
