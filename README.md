@@ -32,7 +32,9 @@ Without `--expose-gc` the memory stability test is skipped (everything else stil
 - **Repeated value measured separately** (test 8, clearly labeled) — re-rendering the same QR across requests is a real production scenario, and the cache is expected to dominate there by design.
 - **`child_process.fork` for cold start** — each round is a fresh Node process with zero JIT warmup. Renders within a round also use unique values so render #2+ measures the JIT-warmed pipeline, not a cache hit.
 - **`renderToString`** used for React-based libs to simulate SSR.
+- **`@ttsalpha/qrcode/core` in the cold-start test** — test 7 times the import, so the `toSVGString` round uses `./core`, the React-free entry added in 3.1.0: a headless caller has no reason to load React. Tests 1–6 and 8 import the root entry; they do not time imports, so the entry makes no difference there.
 - **JSDOM polyfill** for `qr-code-styling` (browser-only lib).
+- **The feature matrix is capability, not measurement.** `features` / `featureScores` in the JSON are compiled from each lib's API and docs, not produced by the tests — `typescript`, `esm` and `canvasOutput` are `true` for things nothing here renders. Capabilities the tests cannot reach, React Native support among them, are left out rather than scored.
 
 ## Files
 

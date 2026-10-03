@@ -38,7 +38,7 @@ async function run() {
   let renderFn;
 
   if (LIB === "ttsalpha-util") {
-    const { toSVGString } = await import("@ttsalpha/qrcode");
+    const { toSVGString } = await import("@ttsalpha/qrcode/core");
     importMs = performance.now() - t_import_start;
     renderFn = (i) => toSVGString({ value: `${VALUE}/${i}`, qr: { errorCorrectionLevel: ECL }, size: 256 });
   } else if (LIB === "ttsalpha-react") {

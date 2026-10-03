@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@ttsalpha/qrcode':
-        specifier: 3.0.0
-        version: 3.0.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: 3.1.0
+        version: 3.1.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       jsdom:
         specifier: 29.1.1
         version: 29.1.1
@@ -99,11 +99,17 @@ packages:
       '@noble/hashes':
         optional: true
 
-  '@ttsalpha/qrcode@3.0.0':
-    resolution: {integrity: sha512-P0E/139zcXNVtAWUaHoDm/mtcAPsYej1tg4AJg6ciNRE7N+kgumx7yq4BFplCIcTKLti0J5P7+UrTquO9Nh1uw==}
+  '@ttsalpha/qrcode@3.1.0':
+    resolution: {integrity: sha512-uhAqzRhIjIoa9F+ZsqzFiXhGbu0kWFK42qnvLJTwoqxGspDViNmtXv8XfrSHo1WaJUy/PPfdcfbDGhUXKtrPpQ==}
     peerDependencies:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
+      react-native-svg: '>=14.0.0'
+    peerDependenciesMeta:
+      react-dom:
+        optional: true
+      react-native-svg:
+        optional: true
 
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
@@ -420,9 +426,10 @@ snapshots:
 
   '@exodus/bytes@1.15.1': {}
 
-  '@ttsalpha/qrcode@3.0.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@ttsalpha/qrcode@3.1.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       react: 19.2.7
+    optionalDependencies:
       react-dom: 19.2.7(react@19.2.7)
 
   ansi-regex@5.0.1: {}
