@@ -12,8 +12,9 @@
 const LIB = process.env.COLD_LIB;
 const ECL = process.env.COLD_ECL || "M";
 const ROUNDS = parseInt(process.env.COLD_ROUNDS || "5", 10);
-// A per-render suffix is appended so render #2+ measures the JIT-warmed
-// pipeline, not a value-level cache hit (@ttsalpha/qrcode ≥2.4 has an LRU).
+// A per-render suffix keeps render #2+ off the value cache
+// (@ttsalpha/qrcode ≥2.4 has an LRU), so it shows what a second request in a
+// warm process costs. It is still far short of a JIT-optimised path.
 const VALUE = "https://example.com/cold-start-test";
 
 async function run() {
@@ -40,7 +41,8 @@ async function run() {
   if (LIB === "ttsalpha-util") {
     const { toSVGString } = await import("@ttsalpha/qrcode/core");
     importMs = performance.now() - t_import_start;
-    renderFn = (i) => toSVGString({ value: `${VALUE}/${i}`, qr: { errorCorrectionLevel: ECL }, size: 256 });
+    renderFn = (i) =>
+      toSVGString({ value: `${VALUE}/${i}`, qr: { errorCorrectionLevel: ECL }, size: 256 });
   } else if (LIB === "ttsalpha-react") {
     const { renderToString } = await import("react-dom/server");
     const React = (await import("react")).default;

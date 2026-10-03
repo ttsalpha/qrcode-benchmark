@@ -78,7 +78,44 @@ const SSR_PAYLOADS = [
   "BEGIN:VCARD\nVERSION:3.0\nFN:Jane Smith\nORG:Example Corp\nTEL:+15550009876\nEMAIL:jane@example.com\nADR:;;123 Main St;Springfield;IL;62701;USA\nURL:https://example.com/jane\nEND:VCARD",
 ];
 
-const WARMUP = 20;
+// A heavy render path takes on the order of a thousand iterations before V8
+// optimises it, so a small fixed count measures unoptimised code. The ceiling
+// keeps a slow lib from stalling the suite.
+const WARMUP_ITERS = 2000;
+const WARMUP_MAX_MS = 500;
+
+function warmUp(fn) {
+  const end = performance.now() + WARMUP_MAX_MS;
+  for (let i = 0; i < WARMUP_ITERS; i++) {
+    fn(i);
+    if (performance.now() > end) break;
+  }
+}
+
+async function warmUpAsync(fn) {
+  const end = performance.now() + WARMUP_MAX_MS;
+  for (let i = 0; i < WARMUP_ITERS; i++) {
+    await fn(i);
+    if (performance.now() > end) break;
+  }
+}
+
+// Libs are measured back to back in one process, so the first pays costs the
+// rest inherit and the last absorbs any drift. Rotating per run and taking the
+// median cancels both. Results keep their declared order, so only execution
+// order changes.
+const ROTATE = Number(process.env.BENCH_ROTATE ?? 0);
+
+async function measureRotated(entries) {
+  const n = entries.length;
+  const offset = ((ROTATE % n) + n) % n;
+  const byKey = new Map();
+  for (let i = 0; i < n; i++) {
+    const [key, run] = entries[(i + offset) % n];
+    byKey.set(key, await run());
+  }
+  return Object.fromEntries(entries.map(([key]) => [key, byKey.get(key)]));
+}
 
 function gcIfPossible() {
   if (global.gc) global.gc();
@@ -108,7 +145,7 @@ function p99(arr) {
 // Uses unique value each render to prevent any lib from gaining advantage via
 // value-level caching. More representative of production (varied QR content).
 function measureThroughput(label, fn, durationMs = 3000) {
-  for (let i = 0; i < WARMUP; i++) fn(`https://example.com/w/${i}`);
+  warmUp((i) => fn(`https://example.com/w/${i}`));
   gcIfPossible();
   let count = 0;
   const end = performance.now() + durationMs;
@@ -121,7 +158,7 @@ function measureThroughput(label, fn, durationMs = 3000) {
 }
 
 async function measureThroughputAsync(label, fn, durationMs = 3000) {
-  for (let i = 0; i < 5; i++) await fn(`https://example.com/w/${i}`);
+  await warmUpAsync((i) => fn(`https://example.com/w/${i}`));
   gcIfPossible();
   let count = 0;
   const end = performance.now() + durationMs;
@@ -143,8 +180,12 @@ function uniqueSuffix(i) {
 
 function benchDataTypes(fn) {
   const results = {};
-  for (const [type, value] of Object.entries(DATA)) {
-    for (let i = 0; i < WARMUP; i++) fn(value + uniqueSuffix(i));
+  const types = Object.entries(DATA);
+  // One warm-up across every payload shape rather than one per type: by the
+  // second type the pipeline is hot, and re-warming it six times per lib would
+  // cost more than the measurement.
+  warmUp((i) => fn(types[i % types.length][1] + uniqueSuffix(i)));
+  for (const [type, value] of types) {
     gcIfPossible();
     const times = [];
     for (let i = 0; i < 500; i++) {
@@ -164,8 +205,9 @@ function benchDataTypes(fn) {
 
 async function benchDataTypesAsync(fn) {
   const results = {};
-  for (const [type, value] of Object.entries(DATA)) {
-    for (let i = 0; i < WARMUP; i++) await fn(value + uniqueSuffix(i));
+  const types = Object.entries(DATA);
+  await warmUpAsync((i) => fn(types[i % types.length][1] + uniqueSuffix(i)));
+  for (const [type, value] of types) {
     gcIfPossible();
     const times = [];
     for (let i = 0; i < 500; i++) {
@@ -185,7 +227,7 @@ async function benchDataTypesAsync(fn) {
 
 // ─── TEST 3: Memory stability ─────────────────────────────────────────────────
 function benchMemory(fn, count = 5000) {
-  for (let i = 0; i < WARMUP; i++) fn(`https://example.com/m/${i}`);
+  warmUp((i) => fn(`https://example.com/m/${i}`));
   gcIfPossible();
   const before = heapMB();
   const snapshots = [before];
@@ -204,7 +246,7 @@ function benchMemory(fn, count = 5000) {
 }
 
 async function benchMemoryAsync(fn, count = 5000) {
-  for (let i = 0; i < WARMUP; i++) await fn(`https://example.com/m/${i}`);
+  await warmUpAsync((i) => fn(`https://example.com/m/${i}`));
   gcIfPossible();
   const before = heapMB();
   const snapshots = [before];
@@ -256,7 +298,7 @@ function benchStyledTts(count = 500) {
     ...STYLED_PROPS_TTS,
     value: STYLED_PROPS_TTS.value + "/" + uniqueSuffix(i),
   });
-  for (let i = 0; i < WARMUP; i++) renderToString(React.createElement(TtsQRCode, props(i)));
+  warmUp((i) => renderToString(React.createElement(TtsQRCode, props(i))));
   gcIfPossible();
   const t0 = performance.now();
   for (let i = 0; i < count; i++) renderToString(React.createElement(TtsQRCode, props(i)));
@@ -268,7 +310,7 @@ function benchStyledTtsUtil(count = 500) {
     ...STYLED_PROPS_TTS,
     value: STYLED_PROPS_TTS.value + "/" + uniqueSuffix(i),
   });
-  for (let i = 0; i < WARMUP; i++) toSVGString(props(i));
+  warmUp((i) => toSVGString(props(i)));
   gcIfPossible();
   const t0 = performance.now();
   for (let i = 0; i < count; i++) toSVGString(props(i));
@@ -298,14 +340,14 @@ async function benchStyledStyling(count = 100) {
 // digit suffix) so the 16-entry LRU in @ttsalpha/qrcode ≥2.4 never hits.
 function benchSSR(Component, makeProps, rounds = 10) {
   let uniq = 0;
-  for (let i = 0; i < WARMUP; i++) {
+  warmUp((i) =>
     renderToString(
       React.createElement(
         Component,
         makeProps(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++)),
       ),
-    );
-  }
+    ),
+  );
   const allTimes = [];
   for (let r = 0; r < rounds; r++) {
     gcIfPossible();
@@ -324,7 +366,7 @@ function benchSSR(Component, makeProps, rounds = 10) {
 
 function benchSSRUtil(fn, rounds = 10) {
   let uniq = 0;
-  for (let i = 0; i < WARMUP; i++) fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++));
+  warmUp((i) => fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++)));
   const allTimes = [];
   for (let r = 0; r < rounds; r++) {
     gcIfPossible();
@@ -341,8 +383,7 @@ function benchSSRUtil(fn, rounds = 10) {
 
 async function benchSSRUtilAsync(fn, rounds = 10) {
   let uniq = 0;
-  for (let i = 0; i < WARMUP; i++)
-    await fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++));
+  await warmUpAsync((i) => fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++)));
   const allTimes = [];
   for (let r = 0; r < rounds; r++) {
     gcIfPossible();
@@ -364,7 +405,7 @@ async function benchSSRUtilAsync(fn, rounds = 10) {
 // NOTE: True parallelism requires worker_threads (separate test).
 async function benchSequentialBatch(fn, batchSize = 100, rounds = 20) {
   let uniq = 0;
-  for (let i = 0; i < WARMUP; i++) fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++));
+  warmUp((i) => fn(SSR_PAYLOADS[i % SSR_PAYLOADS.length] + uniqueSuffix(uniq++)));
   gcIfPossible();
 
   const batchTimes = [];
@@ -454,7 +495,7 @@ async function benchTrueColdStart(lib, rounds = 10) {
 // test is to quantify that, clearly labeled. All libs run the same pattern.
 function measureRepeatedValue(label, fn, durationMs = 2000) {
   const value = "https://example.com/repeated-value-test";
-  for (let i = 0; i < WARMUP; i++) fn(value);
+  warmUp(() => fn(value));
   gcIfPossible();
   let count = 0;
   const end = performance.now() + durationMs;
@@ -624,56 +665,108 @@ console.log("─".repeat(60));
 
 console.log("\n[1/8] Throughput — unique input per render (3s each)");
 console.log("  Note: unique value per call; no lib can benefit from caching");
-const tput = {
-  "@ttsalpha/qrcode (React)": measureThroughput("@ttsalpha (React)", (v) =>
-    renderToString(
-      React.createElement(TtsQRCode, { value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
-    ),
-  ),
-  "@ttsalpha/qrcode (toSVGStr)": measureThroughput("@ttsalpha (util)", (v) =>
-    toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
-  ),
-  "qrcode.react (SVG)": measureThroughput("qrcode.react", (v) =>
-    renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
-  ),
-  "react-qr-code": measureThroughput("react-qr-code", (v) =>
-    renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
-  ),
-  "qr-code-styling": await measureThroughputAsync("qr-code-styling", async (v) => {
-    const q = new QRCodeStyling({
-      data: v,
-      type: "svg",
-      width: 256,
-      height: 256,
-      qrOptions: { errorCorrectionLevel: ECL },
-    });
-    await q.getRawData("svg");
-  }),
-  "qrcode (headless)": await measureThroughputAsync("qrcode (headless)", (v) =>
-    QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
-  ),
-};
+const tput = await measureRotated([
+  [
+    "@ttsalpha/qrcode (React)",
+    () =>
+      measureThroughput("@ttsalpha (React)", (v) =>
+        renderToString(
+          React.createElement(TtsQRCode, {
+            value: v,
+            qr: { errorCorrectionLevel: ECL },
+            size: 256,
+          }),
+        ),
+      ),
+  ],
+  [
+    "@ttsalpha/qrcode (toSVGStr)",
+    () =>
+      measureThroughput("@ttsalpha (util)", (v) =>
+        toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
+      ),
+  ],
+  [
+    "qrcode.react (SVG)",
+    () =>
+      measureThroughput("qrcode.react", (v) =>
+        renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
+      ),
+  ],
+  [
+    "react-qr-code",
+    () =>
+      measureThroughput("react-qr-code", (v) =>
+        renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
+      ),
+  ],
+  [
+    "qr-code-styling",
+    () =>
+      measureThroughputAsync("qr-code-styling", async (v) => {
+        const q = new QRCodeStyling({
+          data: v,
+          type: "svg",
+          width: 256,
+          height: 256,
+          qrOptions: { errorCorrectionLevel: ECL },
+        });
+        await q.getRawData("svg");
+      }),
+  ],
+  [
+    "qrcode (headless)",
+    () =>
+      measureThroughputAsync("qrcode (headless)", (v) =>
+        QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
+      ),
+  ],
+]);
 
 console.log("\n[2/8] Data complexity — 500 samples per type, unique input, p99 included");
-const complexity = {
-  "@ttsalpha/qrcode (React)": benchDataTypes((v) =>
-    renderToString(
-      React.createElement(TtsQRCode, { value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
-    ),
-  ),
-  "@ttsalpha/qrcode (toSVGStr)": benchDataTypes((v) =>
-    toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
-  ),
-  "qrcode.react (SVG)": benchDataTypes((v) =>
-    renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
-  ),
-  "react-qr-code": benchDataTypes((v) =>
-    renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
-  ),
-  "qrcode (headless)": await benchDataTypesAsync((v) =>
-    QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
-  ),
-};
+const complexity = await measureRotated([
+  [
+    "@ttsalpha/qrcode (React)",
+    () =>
+      benchDataTypes((v) =>
+        renderToString(
+          React.createElement(TtsQRCode, {
+            value: v,
+            qr: { errorCorrectionLevel: ECL },
+            size: 256,
+          }),
+        ),
+      ),
+  ],
+  [
+    "@ttsalpha/qrcode (toSVGStr)",
+    () =>
+      benchDataTypes((v) =>
+        toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
+      ),
+  ],
+  [
+    "qrcode.react (SVG)",
+    () =>
+      benchDataTypes((v) =>
+        renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
+      ),
+  ],
+  [
+    "react-qr-code",
+    () =>
+      benchDataTypes((v) =>
+        renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
+      ),
+  ],
+  [
+    "qrcode (headless)",
+    () =>
+      benchDataTypesAsync((v) =>
+        QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
+      ),
+  ],
+]);
 console.log("  Done.");
 
 console.log("\n[3/8] Memory stability — 5000 renders, unique input");
@@ -681,25 +774,47 @@ let memStability = null;
 if (!global.gc) {
   console.log("  Skipped — requires --expose-gc (not available in this environment)");
 } else {
-  memStability = {
-    "@ttsalpha/qrcode (React)": benchMemory((v) =>
-      renderToString(
-        React.createElement(TtsQRCode, { value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
-      ),
-    ),
-    "@ttsalpha/qrcode (toSVGStr)": benchMemory((v) =>
-      toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
-    ),
-    "qrcode.react (SVG)": benchMemory((v) =>
-      renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
-    ),
-    "react-qr-code": benchMemory((v) =>
-      renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
-    ),
-    "qrcode (headless)": await benchMemoryAsync((v) =>
-      QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
-    ),
-  };
+  memStability = await measureRotated([
+    [
+      "@ttsalpha/qrcode (React)",
+      () =>
+        benchMemory((v) =>
+          renderToString(
+            React.createElement(TtsQRCode, {
+              value: v,
+              qr: { errorCorrectionLevel: ECL },
+              size: 256,
+            }),
+          ),
+        ),
+    ],
+    [
+      "@ttsalpha/qrcode (toSVGStr)",
+      () =>
+        benchMemory((v) => toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 })),
+    ],
+    [
+      "qrcode.react (SVG)",
+      () =>
+        benchMemory((v) =>
+          renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
+        ),
+    ],
+    [
+      "react-qr-code",
+      () =>
+        benchMemory((v) =>
+          renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
+        ),
+    ],
+    [
+      "qrcode (headless)",
+      () =>
+        benchMemoryAsync((v) =>
+          QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
+        ),
+    ],
+  ]);
   for (const [k, v] of Object.entries(memStability)) {
     console.log(
       `  ${k}: baseline=${v.baselineMB}MB peak=${v.peakMB}MB final=${v.finalMB}MB drift=${v.driftMB}MB`,
@@ -708,14 +823,14 @@ if (!global.gc) {
 }
 
 console.log("\n[4/8] Styled QR — ECL=H + size=512, unique input (shapes only, no logo)");
-const styled = {
-  "@ttsalpha/qrcode (React)": benchStyledTts(),
-  "@ttsalpha/qrcode (toSVGStr)": benchStyledTtsUtil(),
-  "qr-code-styling": await benchStyledStyling(100),
-  "qrcode.react (SVG)": null,
-  "react-qr-code": null,
-  "qrcode (headless)": null,
-};
+const styled = await measureRotated([
+  ["@ttsalpha/qrcode (React)", () => benchStyledTts()],
+  ["@ttsalpha/qrcode (toSVGStr)", () => benchStyledTtsUtil()],
+  ["qr-code-styling", () => benchStyledStyling(100)],
+  ["qrcode.react (SVG)", () => null],
+  ["react-qr-code", () => null],
+  ["qrcode (headless)", () => null],
+]);
 for (const [k, v] of Object.entries(styled)) {
   console.log(`  ${k}: ${v === null ? "— (no styling API)" : v + "ms"}`);
 }
@@ -723,71 +838,110 @@ for (const [k, v] of Object.entries(styled)) {
 console.log(
   "\n[5/8] SSR simulation — 12 varied payloads, unique per render, 10 rounds, p99 included",
 );
-const ssr = {
-  "@ttsalpha/qrcode (React)": benchSSR(TtsQRCode, (v) => ({
-    value: v,
-    qr: { errorCorrectionLevel: ECL },
-    size: 256,
-  })),
-  "@ttsalpha/qrcode (toSVGStr)": benchSSRUtil((v) =>
-    toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
-  ),
-  "qrcode.react (SVG)": benchSSR(QRCodeSVG, (v) => ({ value: v, level: ECL, size: 256 })),
-  "react-qr-code": benchSSR(ReactQRCode, (v) => ({ value: v, level: ECL, size: 256 })),
-  "qrcode (headless)": await benchSSRUtilAsync((v) =>
-    QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
-  ),
-};
+const ssr = await measureRotated([
+  [
+    "@ttsalpha/qrcode (React)",
+    () =>
+      benchSSR(TtsQRCode, (v) => ({
+        value: v,
+        qr: { errorCorrectionLevel: ECL },
+        size: 256,
+      })),
+  ],
+  [
+    "@ttsalpha/qrcode (toSVGStr)",
+    () =>
+      benchSSRUtil((v) => toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 })),
+  ],
+  ["qrcode.react (SVG)", () => benchSSR(QRCodeSVG, (v) => ({ value: v, level: ECL, size: 256 }))],
+  ["react-qr-code", () => benchSSR(ReactQRCode, (v) => ({ value: v, level: ECL, size: 256 }))],
+  [
+    "qrcode (headless)",
+    () =>
+      benchSSRUtilAsync((v) =>
+        QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
+      ),
+  ],
+]);
 for (const [k, v] of Object.entries(ssr))
   console.log(`  ${k}: median=${v.medianMs}ms p95=${v.p95Ms}ms p99=${v.p99Ms}ms`);
 
 console.log("\n[6/8] Sequential batch — burst of N renders (single thread, production SSR)");
 console.log('  Note: Node.js is single-threaded; "concurrent" React renders are sequential.');
 console.log("  True parallelism requires worker_threads (not included here).");
-const batch = {
-  "@ttsalpha/qrcode (React)": await benchSequentialBatch(
-    (v) =>
-      renderToString(
-        React.createElement(TtsQRCode, { value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
+const batch = await measureRotated([
+  [
+    "@ttsalpha/qrcode (React)",
+    () =>
+      benchSequentialBatch(
+        (v) =>
+          renderToString(
+            React.createElement(TtsQRCode, {
+              value: v,
+              qr: { errorCorrectionLevel: ECL },
+              size: 256,
+            }),
+          ),
+        100,
+        20,
       ),
-    100,
-    20,
-  ),
-  "@ttsalpha/qrcode (toSVGStr)": await benchSequentialBatch(
-    (v) => toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
-    100,
-    20,
-  ),
-  "qrcode.react (SVG)": await benchSequentialBatch(
-    (v) => renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
-    100,
-    20,
-  ),
-  "react-qr-code": await benchSequentialBatch(
-    (v) => renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
-    100,
-    20,
-  ),
-  "qr-code-styling": await benchSequentialBatchAsync(
-    async (v) => {
-      const q = new QRCodeStyling({
-        data: v,
-        type: "svg",
-        width: 256,
-        height: 256,
-        qrOptions: { errorCorrectionLevel: ECL },
-      });
-      await q.getRawData("svg");
-    },
-    20,
-    10,
-  ),
-  "qrcode (headless)": await benchSequentialBatchAsync(
-    (v) => QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
-    100,
-    20,
-  ),
-};
+  ],
+  [
+    "@ttsalpha/qrcode (toSVGStr)",
+    () =>
+      benchSequentialBatch(
+        (v) => toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
+        100,
+        20,
+      ),
+  ],
+  [
+    "qrcode.react (SVG)",
+    () =>
+      benchSequentialBatch(
+        (v) => renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
+        100,
+        20,
+      ),
+  ],
+  [
+    "react-qr-code",
+    () =>
+      benchSequentialBatch(
+        (v) =>
+          renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
+        100,
+        20,
+      ),
+  ],
+  [
+    "qr-code-styling",
+    () =>
+      benchSequentialBatchAsync(
+        async (v) => {
+          const q = new QRCodeStyling({
+            data: v,
+            type: "svg",
+            width: 256,
+            height: 256,
+            qrOptions: { errorCorrectionLevel: ECL },
+          });
+          await q.getRawData("svg");
+        },
+        20,
+        10,
+      ),
+  ],
+  [
+    "qrcode (headless)",
+    () =>
+      benchSequentialBatchAsync(
+        (v) => QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
+        100,
+        20,
+      ),
+  ],
+]);
 for (const [k, v] of Object.entries(batch)) {
   console.log(
     `  ${k}: batch=${v.batchSize} median=${v.medianBatchMs}ms p95=${v.p95BatchMs}ms avg/render=${v.avgPerRenderMs}ms`,
@@ -820,35 +974,63 @@ for (const [label, lib] of coldStartLibs) {
 console.log("\n[8/8] Repeated value — same input every render (2s each)");
 console.log("  Note: measures value-level caching (@ttsalpha ≥2.4 has a 16-entry LRU).");
 console.log("  Expected to favor @ttsalpha by design — kept separate from cold-path tests.");
-const repeated = {
-  "@ttsalpha/qrcode (React)": measureRepeatedValue("@ttsalpha (React)", (v) =>
-    renderToString(
-      React.createElement(TtsQRCode, { value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
-    ),
-  ),
-  "@ttsalpha/qrcode (toSVGStr)": measureRepeatedValue("@ttsalpha (util)", (v) =>
-    toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
-  ),
-  "qrcode.react (SVG)": measureRepeatedValue("qrcode.react", (v) =>
-    renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
-  ),
-  "react-qr-code": measureRepeatedValue("react-qr-code", (v) =>
-    renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
-  ),
-  "qr-code-styling": await measureRepeatedValueAsync("qr-code-styling", async (v) => {
-    const q = new QRCodeStyling({
-      data: v,
-      type: "svg",
-      width: 256,
-      height: 256,
-      qrOptions: { errorCorrectionLevel: ECL },
-    });
-    await q.getRawData("svg");
-  }),
-  "qrcode (headless)": await measureRepeatedValueAsync("qrcode (headless)", (v) =>
-    QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
-  ),
-};
+const repeated = await measureRotated([
+  [
+    "@ttsalpha/qrcode (React)",
+    () =>
+      measureRepeatedValue("@ttsalpha (React)", (v) =>
+        renderToString(
+          React.createElement(TtsQRCode, {
+            value: v,
+            qr: { errorCorrectionLevel: ECL },
+            size: 256,
+          }),
+        ),
+      ),
+  ],
+  [
+    "@ttsalpha/qrcode (toSVGStr)",
+    () =>
+      measureRepeatedValue("@ttsalpha (util)", (v) =>
+        toSVGString({ value: v, qr: { errorCorrectionLevel: ECL }, size: 256 }),
+      ),
+  ],
+  [
+    "qrcode.react (SVG)",
+    () =>
+      measureRepeatedValue("qrcode.react", (v) =>
+        renderToString(React.createElement(QRCodeSVG, { value: v, level: ECL, size: 256 })),
+      ),
+  ],
+  [
+    "react-qr-code",
+    () =>
+      measureRepeatedValue("react-qr-code", (v) =>
+        renderToString(React.createElement(ReactQRCode, { value: v, level: ECL, size: 256 })),
+      ),
+  ],
+  [
+    "qr-code-styling",
+    () =>
+      measureRepeatedValueAsync("qr-code-styling", async (v) => {
+        const q = new QRCodeStyling({
+          data: v,
+          type: "svg",
+          width: 256,
+          height: 256,
+          qrOptions: { errorCorrectionLevel: ECL },
+        });
+        await q.getRawData("svg");
+      }),
+  ],
+  [
+    "qrcode (headless)",
+    () =>
+      measureRepeatedValueAsync("qrcode (headless)", (v) =>
+        QRCodeLib.toString(v, { type: "svg", width: 256, errorCorrectionLevel: ECL }),
+      ),
+  ],
+]);
 
 const scores = computeScores();
 

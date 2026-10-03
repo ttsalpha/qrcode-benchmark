@@ -27,14 +27,16 @@ Without `--expose-gc` the memory stability test is skipped (everything else stil
 
 ## Design decisions
 
-- **ECL pinned to M** for all tests. Prevents libs with auto ECL-upgrading from appearing slower than they are. Test 4 uses H, the level a styled QR needs once a logo occludes the center, though no logo is drawn: `qr-code-styling` loads one through an `Image`, which never resolves under JSDOM.
-- **Unique input per render** in every cold-path test (1–7) — no lib can benefit from internal caching. `@ttsalpha/qrcode` ≥2.4 memoizes matrices in a 16-entry LRU, so any test that repeats a value (or cycles fewer than 16 distinct values) would measure its cache instead of its pipeline. Suffixes are fixed-length digits so the encoding mode and QR version stay stable.
-- **Repeated value measured separately** (test 8, clearly labeled) — re-rendering the same QR across requests is a real production scenario, and the cache is expected to dominate there by design.
-- **`child_process.fork` for cold start** — each round is a fresh Node process with zero JIT warmup. Renders within a round also use unique values so render #2+ measures the JIT-warmed pipeline, not a cache hit.
-- **`renderToString`** used for React-based libs to simulate SSR.
-- **`@ttsalpha/qrcode/core` in the cold-start test** — test 7 times the import, so the `toSVGString` round uses `./core`, the React-free entry added in 3.1.0: a headless caller has no reason to load React. Tests 1–6 and 8 import the root entry; they do not time imports, so the entry makes no difference there.
-- **JSDOM polyfill** for `qr-code-styling` (browser-only lib).
-- **The feature matrix is capability, not measurement.** `features` / `featureScores` in the JSON are compiled from each lib's API and docs, not produced by the tests — `typescript`, `esm` and `canvasOutput` are `true` for things nothing here renders. Capabilities the tests cannot reach, React Native support among them, are left out rather than scored.
+- **ECL pinned to M**, so a lib that silently upgrades the level does not look slower than it is. Test 4 runs at H, the level a styled QR with a logo needs; no logo is drawn, because `qr-code-styling` loads one through an `Image` that never resolves under JSDOM.
+- **Unique input per render** in tests 1–7, so no lib is measured through its own cache: `@ttsalpha/qrcode` ≥2.4 memoizes matrices in a 16-entry LRU. Suffixes are fixed-length digits, so the encoding mode and QR version stay put.
+- **Repeated value measured separately** in test 8, where re-rendering one QR is the real scenario and the cache is meant to dominate.
+- **`child_process.fork` for cold start** — each round is a fresh process. Renders inside a round use unique values, so render #2 shows what a second request costs rather than a cache hit.
+- **Warm-up is bounded by work, not by a count** — up to 2,000 iterations or 500 ms per lib. A heavy render path takes on the order of a thousand iterations before V8 optimises it, and measuring before that reports up to 2.4× its steady state.
+- **The lib order rotates between runs** — `bench-median.mjs` gives each run a different `BENCH_ROTATE` offset, so no lib is always first or always last. Results keep their declared order.
+- **`renderToString`** for the React libs, to stand in for SSR.
+- **`@ttsalpha/qrcode/core` in the cold-start test**, since test 7 times the import and a headless caller has no reason to load React. The other tests use the root entry and do not time imports.
+- **JSDOM polyfill** for `qr-code-styling`, which is browser-only.
+- **The feature matrix is capability, not measurement** — `features` / `featureScores` come from each lib's API and docs, not from the tests. Capabilities the tests cannot reach, React Native among them, are left out rather than scored.
 
 ## Files
 

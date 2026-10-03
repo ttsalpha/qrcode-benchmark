@@ -43,9 +43,12 @@ const extractJson = (out) => {
 const runs = [];
 for (let i = 1; i <= RUNS; i++) {
   process.stderr.write(`=== run ${i}/${RUNS} ===\n`);
+  // A different order per run, so the median is not taken over runs that all
+  // gave the same lib the first slot.
   const out = execFileSync("node", ["--expose-gc", "benchmark.mjs"], {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, BENCH_ROTATE: String(i - 1) },
   });
   runs.push(extractJson(out));
 }
